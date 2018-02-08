@@ -39,6 +39,7 @@ init_glfw_and_opengl :: proc(width, height: int) {
     glfw.SetWindowCloseCallback(the_window, glfw.Window_Close_Proc(close_callback));
 }
 
+
 main :: proc() {
     init_glfw_and_opengl(WIDTH, HEIGHT);
     running = true;
@@ -48,6 +49,9 @@ main :: proc() {
     buffer_seek(buff, -6);
     buffer_insert(buff, "Odin!");
     buffer_insert(buff, "A very very very long string!");
+    
+    file_buffer := load_buffer_from_file("hamlet.txt");
+    os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
     
     /*
 for i := 0; i < len(buff.data); i += 1 {

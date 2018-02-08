@@ -1,8 +1,7 @@
 import "core:fmt.odin"
 import "core:strings.odin"
 import "core:utf8.odin"
-
-DEFAULT_GAP_SIZE :: 32;
+import "core:os.odin"
 
 // Gap buuffer
 // pre  - start of gap
@@ -28,9 +27,33 @@ make_empty_buffer :: proc(name: string) -> ^Buffer {
     return b;
 }
 
+make_sized_buffer :: proc(name: string, size: int) -> ^Buffer {
+    b := new(Buffer);
+    
+    b.name = strings.new_string(name);
+    b.data = make([]rune, size);
+    b.pre = 0;
+    b.post = 0;
+    
+    return b;
+}
+
+load_buffer_from_file :: proc(path: string) -> ^Buffer {
+    data, ok := os.read_entire_file(path);
+    if !ok {
+        return nil;
+    }
+    
+    result := make_sized_buffer(path, len(data));
+    
+    buffer_insert(result, string(data[..]));
+    
+    return result;
+}
+
 buffer_new_size :: proc(using buffer: ^Buffer) -> int {
     if data == nil {
-        return 2+DEFAULT_GAP_SIZE;
+        return 32;
     } else if len(data) > 1024 {
         return len(data)+1024;
     } else {
@@ -100,6 +123,9 @@ buffer_insert_char :: proc(using buffer: ^Buffer, r: rune) {
 }
 
 buffer_insert_string :: proc(using buffer: ^Buffer, str: string) {
+    // TODO(thebirk): This is silly, this requires moving to chars everytime we insert a
+    // character from the string.
+    
     for r in str {
         buffer_insert_char(buffer, r);
     }
