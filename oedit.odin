@@ -1,9 +1,12 @@
 import "core:fmt.odin"
 import "core:os.odin"
-using import "buffer.odin"
+
 import "shared:odin-glfw/glfw.odin"
 import "shared:odin-gl/gl.odin"
 import stbtt "shared:odin-stb/stb_truetype.odin"
+
+using import "buffer.odin"
+using import "font.odin"
 
 HEIGHT :: 540;
 WIDTH  :: HEIGHT / 3 * 4;
@@ -28,7 +31,7 @@ init_glfw_and_opengl :: proc(width, height: int) {
     }
     
     glfw.MakeContextCurrent(the_window);
-    glfw.SwapInterval(1);
+    glfw.SwapInterval(0);
     
     get_proc_address :: proc(p: rawptr, name: string) {
         (cast(^rawptr)p)^ = glfw.GetProcAddress(&name[0]);
@@ -50,8 +53,12 @@ main :: proc() {
     buffer_insert(buff, "Odin!");
     buffer_insert(buff, "A very very very long string!");
     
-    file_buffer := load_buffer_from_file("hamlet.txt");
-    os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
+    //file_buffer := load_buffer_from_file("hamlet.txt");
+    //fmt.printf("Loaded file\n");
+    //os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
+    //fmt.printf("Wrote buffer\n");
+    
+    test_font := load_font_at_size("consola.ttf", 18);
     
     /*
 for i := 0; i < len(buff.data); i += 1 {

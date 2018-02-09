@@ -125,9 +125,19 @@ buffer_insert_char :: proc(using buffer: ^Buffer, r: rune) {
 buffer_insert_string :: proc(using buffer: ^Buffer, str: string) {
     // TODO(thebirk): This is silly, this requires moving to chars everytime we insert a
     // character from the string.
-    
-    for r in str {
-        buffer_insert_char(buffer, r);
+    if pre+post+len(str) <= len(data) {
+        fmt.printf("Speedy on buffer '%s'!\n", name);
+        stri := 0;
+        for i := 0; i < len(str); i += 1 {
+            r, s := utf8.decode_rune(cast([]u8)str[stri..]);
+            stri += s;
+            data[pre]= r;
+            pre += 1;
+        }
+    } else {
+        for r in str {
+            buffer_insert_char(buffer, r);
+        }
     }
 }
 
