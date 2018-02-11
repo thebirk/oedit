@@ -75,11 +75,10 @@ main :: proc() {
     //os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
     //fmt.printf("Wrote buffer\n");
     
-    //test_font := load_font_at_size("consola.ttf", 18);
-    //test_font := load_font_at_size("arial.ttf", 18);
+    //test_font := load_font_at_size("fonts/consola.ttf", 18);
     
-    //test_font := load_font_at_size("arial.ttf", 124, true);
-    test_font := load_font_at_size("consola.ttf", 124);
+    //test_font := load_font_at_size("fonts/arial.ttf", 124, true);
+    test_font := load_font_at_size("fonts/Karmina Regular.otf", 64);
     
     gl.ClearColor(0, 0.17, 0.21, 1);
     for running {
@@ -87,6 +86,8 @@ main :: proc() {
         
         //draw_text(test_font, buffer_to_utf8_string(file_buffer), 0, 0, Color{f32(0x83/255.0), f32(0x94/255.0), f32(0x96/255.0), 1}, Color{0, 0.17, 0.21, 1}, WIDTH, HEIGHT);
         draw_text(test_font, "WaTa :: struct {\n  x: f32,\n}", 0, 0, Color{f32(0x83/255.0), f32(0x94/255.0), f32(0x96/255.0), 1}, Color{0, 0.17, 0.21, 1}, WIDTH, HEIGHT);
+        
+        draw_text(test_font, "This a beautiful font!", 0, 250, Color{f32(0x83/255.0), f32(0x94/255.0), f32(0x96/255.0), 1}, Color{0, 0.17, 0.21, 1}, WIDTH, HEIGHT);
         
         glfw.SwapBuffers(the_window);
         glfw.WaitEvents();
