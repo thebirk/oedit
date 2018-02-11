@@ -1,8 +1,27 @@
 import "core:os.odin"
 import "core:fmt.odin"
+import "core:math.odin"
 
 import "shared:odin-gl/gl.odin"
 import stbtt "shared:odin-stb/stb_truetype.odin"
+
+font_shader: u32;
+font_shader_uniforms: map[string]gl.Uniform_Info;
+vbo: u32;
+
+ATLAS_WIDTH  :: 4096;
+ATLAS_HEIGHT :: 4096;
+
+Glyph :: struct {
+    bearing_x: int,
+    advance_x: int,
+    x0, y0: f32,
+    x1, y1: f32,
+    u0, v0: f32,
+    u1, v1: f32,
+    
+    width, height: f32,
+}
 
 Font :: struct {
     info: stbtt.Font_Info,
@@ -12,10 +31,33 @@ Font :: struct {
     scale: f32,
     data: []u8,
     atlas_pixels: []u8,
-    packed_chars: map[rune]stbtt.Packed_Char,
+    glyphs: map[rune]Glyph,
+    
+    max_width : f32,
+    max_height: f32,
+    base_y0: f32,
+    line_advance: f32,
+    
+    do_kerning: bool,
 }
 
-load_font_at_size :: proc(path: string, size: f32) -> ^Font {
+init_font_shader :: proc() {
+    ok: bool;
+    font_shader, ok = gl.load_shaders_file("font.vert", "font.frag");
+    if !ok {
+        panic("Failed to compile font shaders!");
+    }
+    
+    font_shader_uniforms = gl.get_uniforms_from_program(font_shader);
+    
+    gl.Enable(gl.BLEND);
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    
+    gl.ActiveTexture(gl.TEXTURE0);
+    gl.GenBuffers(1, &vbo);
+}
+
+load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> ^Font {
     font_data, ok := os.read_entire_file(path);
     if !ok {
         return nil;
@@ -30,36 +72,43 @@ load_font_at_size :: proc(path: string, size: f32) -> ^Font {
         return nil;
     }
     
+    gl.GenTextures(1, &font.texture);
+    
     font.size = size;
     font.scale = stbtt.scale_for_pixel_height(&font.info, size);
+    font.do_kerning = do_kerning;
     
-    fmt.printf("Loaded font '%s'\n", path);
-    fmt.printf("numGlyphs: %d\n", font.info.numGlyphs);
+    {
+        x0,y0,x1,y1: i32;
+        stbtt.stbtt_GetFontBoundingBox(&font.info, &x0, &y0, &x1, &y1);
+        font.max_width  = f32(x1 - x0)*font.scale;
+        font.max_height = f32(y1 - y0)*font.scale;
+        font.base_y0 = f32(y0);
+        fmt.printf("max_width: %v, max_height: %v\n", font.max_width, font.max_height);
+    }
+    
+    {
+        ascent, descent, linegap: i32;
+        stbtt.stbtt_GetFontVMetrics(&font.info, &ascent, &descent, &linegap);
+        font.line_advance = f32(ascent - descent + linegap) * font.scale;
+    }
     
     // Prepare font atlas
-    //gl.GenTextures(1, &font.texture);
-    //gl.BindTexture(gl.TEXTURE_2D, font.texture);
-    ATLAS_WIDTH  :: 4096;
-    ATLAS_HEIGHT :: 4096;
     font.atlas_pixels = make([]u8, ATLAS_WIDTH*ATLAS_HEIGHT);
     
     // Packing default font ranges
     stbtt.stbtt_PackBegin(&font.pack_context, &font.atlas_pixels[0], ATLAS_WIDTH, ATLAS_HEIGHT, 0, 1, nil);
+    stbtt.stbtt_PackSetOversampling(&font.pack_context, 4, 4);
     
     // TODO(thebirk): Find out how to store and pass Packed_Char's
+    
     pack_range(font, 0x20, 0x7F-0x20);
     pack_range(font, 0xA0, 0xFF-0xA0);
-    //gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS_WIDTH, ATLAS_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.atlas_pixels);
     
+    fmt.printf("Loaded font '%s' at pixel size %v\n", path, size);
+    //fmt.printf("numGlyphs: %d\n", font.info.numGlyphs);
     
     return font;
-}
-
-free_font :: proc(font: ^Font) {
-    stbtt.pack_end(&font.pack_context);
-    free(data);
-    free(packed_chars);
-    free(atlas_pixels);
 }
 
 pack_range :: proc(using font: ^Font, from: rune, chars: int) {
@@ -71,8 +120,140 @@ pack_range :: proc(using font: ^Font, from: rune, chars: int) {
         panic("Failed to pack range! This shold be handled better.");
     }
     
-    reserve(&packed_chars, chars);
-    for i in 0..chars {
-        packed_chars[from+rune(i)] = chardata[i];
+    for packed_char, i in chardata {
+        cp := from+rune(i);
+        
+        a: stbtt.Aligned_Quad;
+        x : f32 = 0.0;
+        y : f32 = 0.0;
+        stbtt.stbtt_GetPackedQuad(&chardata[0], ATLAS_WIDTH, ATLAS_HEIGHT, i32(i), &x, &y, &a, 0);
+        
+        g: Glyph;
+        g.u0 = a.s0;
+        g.v0 = a.t0;
+        g.u1 = a.s1;
+        g.v1 = a.t1;
+        
+        g.width = a.x1 - a.x0;
+        g.height = a.y1 - a.y0;
+        
+        g.x0 = a.x0;//*scale;
+        g.y0 = a.y0;//*scale;
+        g.x1 = a.x1;//*scale;
+        g.y1 = a.y1;//*scale;
+        
+        advance: i32;
+        left_bearing: i32;
+        stbtt.stbtt_GetCodepointHMetrics(&info, i32(cp), &advance, &left_bearing);
+        g.bearing_x = int(f32(left_bearing) * scale);
+        g.advance_x = int(f32(advance) * scale);
+        
+        
+        
+        font.glyphs[cp] = g;
+        
+        //fmt.printf("cp %c := %v\n", cp, g);
     }
+    
+    update_texture(font);
+}
+
+free_font :: proc(font: ^Font) {
+    stbtt.pack_end(&font.pack_context);
+    free(font.data);
+    free(font.atlas_pixels);
+}
+
+update_texture :: proc(using font: ^Font) {
+    gl.BindTexture(gl.TEXTURE_2D, font.texture);
+    //gl.PixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS_WIDTH, ATLAS_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.atlas_pixels[0]);
+}
+
+Color :: struct #packed {
+    r, g, b, a: f32,
+};
+
+draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg: Color, screen_width, screen_height: int) {
+    gl.BindTexture(gl.TEXTURE_2D, font.texture);
+    gl.UseProgram(font_shader);
+    
+    projection := math.ortho3d(0, f32(screen_width), f32(screen_height), 0, -1, 1);
+    gl.UniformMatrix4fv(font_shader_uniforms["projection"].location, 1, gl.FALSE, &projection[0][0]);
+    
+    Vertex :: struct #packed {
+        x, y: f32,
+        u, v: f32,
+        fg, bg: Color,
+    }
+    
+    vertices: [dynamic]Vertex;
+    reserve(&vertices, len(text)*6);
+    defer free(vertices);
+    x := start_x;
+    y := start_y;
+    
+    y += scale*-base_y0;
+    
+    for codepoint, i in text {
+        //w, h, a := stbtt.get_packed_quad(packed_chars[..], ATLAS_WIDTH, ATLAS_HEIGHT, int(codepoint), false);
+        //height := (a.y1-a.y0)*size;
+        //width  := (a.x1-a.x0)*size;
+        //width := pc.xadvance * scale;
+        if codepoint == '\n' {
+            y += line_advance;
+            x = start_x;
+        }
+        
+        g := glyphs[codepoint];
+        
+        //fmt.printf("x: %f, y: %f, w: %f, h: %f\n", x, y, width, height);
+        //fmt.printf("s0: %f, t0: %f\n", a.s0, a.t0);
+        //fmt.printf("s1: %f, t1: %f\n", a.s1, a.t1);
+        //fmt.printf("x0: %f, y0: %f\n", a.x0, a.y0);
+        //fmt.printf("x1: %f, y1: %f\n", a.x1, a.y1);
+        
+        //xb := x + f32(g.bearing_x);
+        xb := x;
+        
+        append(&vertices, Vertex{xb+g.x0, y+g.y0, g.u0, g.v0, fg, bg});
+        append(&vertices, Vertex{xb+g.x1, y+g.y0, g.u1, g.v0, fg, bg});
+        append(&vertices, Vertex{xb+g.x0, y+g.y1, g.u0, g.v1, fg, bg});
+        
+        append(&vertices, Vertex{xb+g.x1, y+g.y0, g.u1, g.v0, fg, bg});
+        append(&vertices, Vertex{xb+g.x1, y+g.y1, g.u1, g.v1, fg, bg});
+        append(&vertices, Vertex{xb+g.x0, y+g.y1, g.u0, g.v1, fg, bg});
+        
+        if do_kerning && i < len(text)-1 { 
+            kern_advance := stbtt.stbtt_GetCodepointKernAdvance(&font.info, i32(codepoint), i32(text[i+1]));
+            x += f32(kern_advance)*scale;
+        }
+        x += f32(g.advance_x);
+    }
+    
+    gl.BindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*size_of(Vertex), &vertices[0], gl.STATIC_DRAW);
+    
+    gl.EnableVertexAttribArray(0);
+    gl.EnableVertexAttribArray(1);
+    gl.EnableVertexAttribArray(2);
+    gl.EnableVertexAttribArray(3);
+    
+    pos_stride := 0;
+    uv_stride := 2*size_of(f32);
+    rgba_stride := uv_stride + 2*size_of(f32);
+    bg_stride := rgba_stride + 4*size_of(f32);
+    
+    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(pos_stride)));
+    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(uv_stride)));
+    gl.VertexAttribPointer(2, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(rgba_stride)));
+    gl.VertexAttribPointer(3, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(bg_stride)));
+    
+    gl.DrawArrays(gl.TRIANGLES, 0, i32(len(vertices)));
+    
+    //gl.DeleteBuffers(1, &vbo);
 }

@@ -1,15 +1,15 @@
 import "core:fmt.odin"
 import "core:os.odin"
+import "core:strings.odin"
 
 import "shared:odin-glfw/glfw.odin"
 import "shared:odin-gl/gl.odin"
-import stbtt "shared:odin-stb/stb_truetype.odin"
 
 using import "buffer.odin"
 using import "font.odin"
 
-HEIGHT :: 540;
-WIDTH  :: HEIGHT / 3 * 4;
+HEIGHT :int = 540;
+WIDTH  :int = HEIGHT / 3 * 4;
 
 the_window : glfw.Window_Handle;
 running    : bool;
@@ -22,6 +22,7 @@ init_glfw_and_opengl :: proc(width, height: int) {
     
     glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 3);
     glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 3);
+    //glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE);
     
     the_window = glfw.CreateWindow(i32(width), i32(height), "oedit\x00", nil, nil);
     if the_window == nil {
@@ -40,6 +41,20 @@ init_glfw_and_opengl :: proc(width, height: int) {
     
     close_callback :: proc(window: glfw.Window_Handle) do running = false;
     glfw.SetWindowCloseCallback(the_window, glfw.Window_Close_Proc(close_callback));
+    
+    resize_callback :: proc(window: glfw.Window_Handle, w, h: i32) {
+        WIDTH = int(w);
+        HEIGHT = int(h);
+        gl.Viewport(0, 0, w, h);
+    }
+    glfw.SetWindowSizeCallback(the_window, glfw.Window_Size_Proc(resize_callback));
+    
+    cvendor   := gl.GetString(gl.VENDOR);
+    crenderer := gl.GetString(gl.RENDERER);
+    cversion  := gl.GetString(gl.VERSION);
+    fmt.printf("GL_VENDOR: %s\n", strings.to_odin_string(cvendor));
+    fmt.printf("GL_RENDERER: %s\n", strings.to_odin_string(crenderer));
+    fmt.printf("GL_VERSION: %s\n", strings.to_odin_string(cversion));
 }
 
 
@@ -47,32 +62,34 @@ main :: proc() {
     init_glfw_and_opengl(WIDTH, HEIGHT);
     running = true;
     
+    init_font_shader();
+    
     buff := make_empty_buffer("test-buffer");
     buffer_insert(buff, "Hello, world!");
     buffer_seek(buff, -6);
     buffer_insert(buff, "Odin!");
     buffer_insert(buff, "A very very very long string!");
     
-    //file_buffer := load_buffer_from_file("hamlet.txt");
-    //fmt.printf("Loaded file\n");
+    file_buffer := load_buffer_from_file("oedit.odin");
+    fmt.printf("Loaded file\n");
     //os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
     //fmt.printf("Wrote buffer\n");
     
-    test_font := load_font_at_size("consola.ttf", 18);
+    //test_font := load_font_at_size("consola.ttf", 18);
+    //test_font := load_font_at_size("arial.ttf", 18);
     
-    /*
-for i := 0; i < len(buff.data); i += 1 {
-        fmt.printf("%d ", buff.data[i]);
-        if i != 0 && i % 8 == 0 do fmt.println();
-    }
-    */
+    //test_font := load_font_at_size("arial.ttf", 124, true);
+    test_font := load_font_at_size("consola.ttf", 124);
     
     gl.ClearColor(0, 0.17, 0.21, 1);
     for running {
         gl.Clear(gl.COLOR_BUFFER_BIT);
         
+        //draw_text(test_font, buffer_to_utf8_string(file_buffer), 0, 0, Color{f32(0x83/255.0), f32(0x94/255.0), f32(0x96/255.0), 1}, Color{0, 0.17, 0.21, 1}, WIDTH, HEIGHT);
+        draw_text(test_font, "WaTa :: struct {\n  x: f32,\n}", 0, 0, Color{f32(0x83/255.0), f32(0x94/255.0), f32(0x96/255.0), 1}, Color{0, 0.17, 0.21, 1}, WIDTH, HEIGHT);
+        
         glfw.SwapBuffers(the_window);
-        glfw.PollEvents();
+        glfw.WaitEvents();
         
     }
 }
