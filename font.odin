@@ -8,9 +8,24 @@ import stbtt "shared:odin-stb/stb_truetype.odin"
 font_shader: u32;
 font_shader_uniforms: map[string]gl.Uniform_Info;
 vbo: u32;
+vao: u32;
 
 ATLAS_WIDTH  :: 4096;
 ATLAS_HEIGHT :: 4096;
+
+get_gl_error :: proc(location := #caller_location) {
+    err := gl.GetError();
+    switch err {
+        //case gl.NO_ERROR:  fmt.printf("GL_NO_ERROR at %v\n", location);
+        case gl.INVALID_ENUM: fmt.printf("GL_INVALID_ENUM at %v\n", location);
+        case gl.INVALID_VALUE: fmt.printf("GL_INVALID_VALUE at %v\n", location);
+        case gl.INVALID_OPERATION: fmt.printf("GL_INVALID_OPERATION at %v\n", location);
+        case gl.INVALID_FRAMEBUFFER_OPERATION: fmt.printf("GL_INVALID_FRAMEBUFFER_OPERATION at %v\n", location);
+        case gl.OUT_OF_MEMORY: fmt.printf("GL_OUT_OF_MEMORY at %v\n", location);
+        case gl.STACK_UNDERFLOW: fmt.printf("GL_STACK_UNDERFLOW at %v\n", location);
+        case gl.STACK_OVERFLOW: fmt.printf("GL_STACK_OVERFLOW at %v\n", location);
+    }
+}
 
 Glyph :: struct {
     bearing_x: int,
@@ -51,10 +66,17 @@ init_font_shader :: proc() {
     font_shader_uniforms = gl.get_uniforms_from_program(font_shader);
     
     gl.Enable(gl.BLEND);
+    get_gl_error();
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    get_gl_error();
     
     gl.ActiveTexture(gl.TEXTURE0);
+    get_gl_error();
     gl.GenBuffers(1, &vbo);
+    get_gl_error();
+    
+    gl.GenVertexArrays(1, &vao);
+    get_gl_error();
 }
 
 load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> ^Font {
@@ -73,6 +95,7 @@ load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> 
     }
     
     gl.GenTextures(1, &font.texture);
+    get_gl_error();
     
     font.size = size;
     font.scale = stbtt.scale_for_pixel_height(&font.info, size);
@@ -166,12 +189,16 @@ free_font :: proc(font: ^Font) {
 
 update_texture :: proc(using font: ^Font) {
     gl.BindTexture(gl.TEXTURE_2D, font.texture);
+    get_gl_error();
     //gl.PixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    get_gl_error();
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    get_gl_error();
     //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS_WIDTH, ATLAS_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.atlas_pixels[0]);
+    get_gl_error();
 }
 
 Color :: struct #packed {
@@ -180,10 +207,13 @@ Color :: struct #packed {
 
 draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg: Color, screen_width, screen_height: int) {
     gl.BindTexture(gl.TEXTURE_2D, font.texture);
+    get_gl_error();
     gl.UseProgram(font_shader);
+    get_gl_error();
     
     projection := math.ortho3d(0, f32(screen_width), f32(screen_height), 0, -1, 1);
     gl.UniformMatrix4fv(font_shader_uniforms["projection"].location, 1, gl.FALSE, &projection[0][0]);
+    get_gl_error();
     
     Vertex :: struct #packed {
         x, y: f32,
@@ -235,13 +265,21 @@ draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg
         x += f32(g.advance_x);
     }
     
+    gl.BindVertexArray(vao);
+    get_gl_error();
     gl.BindBuffer(gl.ARRAY_BUFFER, vbo);
+    get_gl_error();
     gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*size_of(Vertex), &vertices[0], gl.STATIC_DRAW);
+    get_gl_error();
     
     gl.EnableVertexAttribArray(0);
+    get_gl_error();
     gl.EnableVertexAttribArray(1);
+    get_gl_error();
     gl.EnableVertexAttribArray(2);
+    get_gl_error();
     gl.EnableVertexAttribArray(3);
+    get_gl_error();
     
     pos_stride := 0;
     uv_stride := 2*size_of(f32);
@@ -249,11 +287,16 @@ draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg
     bg_stride := rgba_stride + 4*size_of(f32);
     
     gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(pos_stride)));
+    get_gl_error();
     gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(uv_stride)));
+    get_gl_error();
     gl.VertexAttribPointer(2, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(rgba_stride)));
+    get_gl_error();
     gl.VertexAttribPointer(3, 4, gl.FLOAT, gl.FALSE, size_of(Vertex), rawptr(uintptr(bg_stride)));
+    get_gl_error();
     
     gl.DrawArrays(gl.TRIANGLES, 0, i32(len(vertices)));
+    get_gl_error();
     
     //gl.DeleteBuffers(1, &vbo);
 }

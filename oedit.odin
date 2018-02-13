@@ -21,8 +21,8 @@ init_glfw_and_opengl :: proc(width, height: int) {
     }
     
     glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 3);
-    glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 3);
-    //glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE);
+    glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, 3);
+    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE);
     
     the_window = glfw.CreateWindow(i32(width), i32(height), "oedit\x00", nil, nil);
     if the_window == nil {
@@ -49,6 +49,13 @@ init_glfw_and_opengl :: proc(width, height: int) {
     }
     glfw.SetWindowSizeCallback(the_window, glfw.Window_Size_Proc(resize_callback));
     
+    key_callback :: proc(window: glfw.Window_Handle, key, scancode, action, mods: i32) {
+        if action == glfw.PRESS && key == glfw.KEY_ESCAPE {
+            running = false;
+        }
+    }
+    glfw.SetKeyCallback(the_window, glfw.Key_Proc(key_callback));
+    
     cvendor   := gl.GetString(gl.VENDOR);
     crenderer := gl.GetString(gl.RENDERER);
     cversion  := gl.GetString(gl.VERSION);
@@ -70,14 +77,15 @@ main :: proc() {
     buffer_insert(buff, "Odin!");
     buffer_insert(buff, "A very very very long string!");
     
-    file_buffer := load_buffer_from_file("oedit.odin");
+    //file_buffer := load_buffer_from_file("oedit.odin");
     fmt.printf("Loaded file\n");
     //os.write_entire_file("test.txt", cast([]u8)buffer_to_utf8_string(file_buffer)[..]);
     //fmt.printf("Wrote buffer\n");
     
     //test_font := load_font_at_size("fonts/consola.ttf", 18);
     
-    //test_font := load_font_at_size("fonts/arial.ttf", 124, true);
+    //test_font := load_font_at_size("fonts/consola.ttf", 64);
+    //test_font := load_font_at_size("fonts/arial.ttf", 64, true);
     test_font := load_font_at_size("fonts/Karmina Regular.otf", 64);
     
     gl.ClearColor(0, 0.17, 0.21, 1);
