@@ -63,6 +63,7 @@ buffer_new_size :: proc(using buffer: ^Buffer) -> int {
 
 buffer_expand :: proc(using buffer: ^Buffer) {
     if pre+post == len(data) {
+        fmt.printf("context: %v\n", context);
         new_size := buffer_new_size(buffer);
         old_data := data;
         data = make([]rune, new_size);
@@ -138,6 +139,13 @@ buffer_insert_string :: proc(using buffer: ^Buffer, str: string) {
         for r in str {
             buffer_insert_char(buffer, r);
         }
+    }
+}
+
+buffer_remove :: proc(using buffer: ^Buffer) {
+    if pre > 0 {
+        pre -= 1;
+        dirty = true;
     }
 }
 

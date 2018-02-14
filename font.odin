@@ -50,7 +50,7 @@ Font :: struct {
     
     max_width : f32,
     max_height: f32,
-    base_y0: f32,
+    ascent: f32,
     line_advance: f32,
     
     do_kerning: bool,
@@ -106,7 +106,6 @@ load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> 
         stbtt.stbtt_GetFontBoundingBox(&font.info, &x0, &y0, &x1, &y1);
         font.max_width  = f32(x1 - x0)*font.scale;
         font.max_height = f32(y1 - y0)*font.scale;
-        font.base_y0 = f32(y0);
         fmt.printf("max_width: %v, max_height: %v\n", font.max_width, font.max_height);
     }
     
@@ -114,6 +113,7 @@ load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> 
         ascent, descent, linegap: i32;
         stbtt.stbtt_GetFontVMetrics(&font.info, &ascent, &descent, &linegap);
         font.line_advance = f32(ascent - descent + linegap) * font.scale;
+        font.ascent = f32(ascent)*font.scale;
     }
     
     // Prepare font atlas
@@ -123,10 +123,14 @@ load_font_at_size :: proc(path: string, size: f32, do_kerning: bool = false) -> 
     stbtt.stbtt_PackBegin(&font.pack_context, &font.atlas_pixels[0], ATLAS_WIDTH, ATLAS_HEIGHT, 0, 1, nil);
     stbtt.stbtt_PackSetOversampling(&font.pack_context, 4, 4);
     
-    // TODO(thebirk): Find out how to store and pass Packed_Char's
+    // TODO(thebirk): We have to store either packed ranges or the old chardata
+    // if we ever want to support resizing the atlas. I think?
     
     pack_range(font, 0x20, 0x7F-0x20);
     pack_range(font, 0xA0, 0xFF-0xA0);
+    //pack_range(font, 0x4E00, 0x9FFF-0x4E00);
+    // Port what you need from Freetype and to dynamic loading
+    // using freetype and stb_rect_pack.
     
     fmt.printf("Loaded font '%s' at pixel size %v\n", path, size);
     //fmt.printf("numGlyphs: %d\n", font.info.numGlyphs);
@@ -191,12 +195,14 @@ update_texture :: proc(using font: ^Font) {
     gl.BindTexture(gl.TEXTURE_2D, font.texture);
     get_gl_error();
     //gl.PixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    //get_gl_error();
+    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    //get_gl_error();
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     get_gl_error();
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     get_gl_error();
-    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    //gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS_WIDTH, ATLAS_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, &font.atlas_pixels[0]);
     get_gl_error();
 }
@@ -206,6 +212,8 @@ Color :: struct #packed {
 };
 
 draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg: Color, screen_width, screen_height: int) {
+    if len(text) == 0 do return;
+    
     gl.BindTexture(gl.TEXTURE_2D, font.texture);
     get_gl_error();
     gl.UseProgram(font_shader);
@@ -227,7 +235,7 @@ draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg
     x := start_x;
     y := start_y;
     
-    y += scale*-base_y0;
+    y += ascent;
     
     for codepoint, i in text {
         //w, h, a := stbtt.get_packed_quad(packed_chars[..], ATLAS_WIDTH, ATLAS_HEIGHT, int(codepoint), false);
@@ -249,6 +257,13 @@ draw_text :: proc(using font: ^Font, text: string, start_x, start_y: f32, fg, bg
         
         //xb := x + f32(g.bearing_x);
         xb := x;
+        
+        /*
+        To get a full background color we should send the quad position, the 
+        baseline offsets and the baselines.
+        That way we can copy the texture over in the shader ofsetted
+        while still being able to color in the eniter quad.
+        */
         
         append(&vertices, Vertex{xb+g.x0, y+g.y0, g.u0, g.v0, fg, bg});
         append(&vertices, Vertex{xb+g.x1, y+g.y0, g.u1, g.v0, fg, bg});
